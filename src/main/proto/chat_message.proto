@@ -1,0 +1,253 @@
+syntax = "proto2";
+
+package net.orionlab.sputniknchatmessage;
+
+option optimize_for = SPEED;
+option java_multiple_files = true;
+
+import "options.proto";
+
+message TransportRequest {
+    required int32 requestId = 1;
+    required int32 msgId = 2;
+    required bytes data = 3;
+}
+
+enum ResponseErrorType {
+    responseErrorTypeNone = 0;
+    responseErrorTypeInternalError = 1;
+    responseErrorTypeUserNeedAuth = 2;
+    responseErrorTypeUserWrongPassword = 3;
+    responseErrorTypeUserNotFound = 4;
+    responseErrorTypeRoomRequiredMinMembers = 5;
+}
+
+message TransportResponse {
+    required int32 responseId = 1;
+    required int32 msgId = 2;
+    required ResponseErrorType errorType = 3;
+    optional bytes data = 4;
+}
+
+message AuthUser {
+    option (net.orionlab.sputniknchatmessage.msgid) = 1;
+
+    required string login = 1;
+    required string password = 2;
+}
+
+message UserDetail {
+    required string userId = 1;
+    required string fullName = 2;
+    optional string avatar = 3;
+}
+
+message AuthUserReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 2;
+
+    required UserDetail detail = 2;
+}
+
+message ListRooms {
+    option (net.orionlab.sputniknchatmessage.msgid) = 3;
+
+    repeated string roomIds = 1;
+}
+
+enum RoomMemberStatusType {
+    roomMemberStatusTypeInvited = 1;
+    roomMemberStatusTypeJoined = 2;
+    roomMemberStatusTypeLeft = 3;
+    roomMemberStatusTypeKicked = 4;
+    roomMemberStatusTypeBanned = 5;
+}
+
+message RoomMemberDetail {
+    required string userId = 1;
+    required string fullName = 2;
+    required bool isOnline = 3;
+    required RoomMemberStatusType memberStatus = 4;
+    optional string avatar = 5;
+    optional int64 lastReadMarker = 6;
+}
+
+// The RoomState, it will be sent to client every time Room is changed (title, avatar, members, member read markers)
+message RoomDetail {
+    required string roomId = 1;
+    required string title = 2;
+    optional string avatar = 3;
+    repeated RoomMemberDetail members = 4;
+    required int32 eventMessageUnreadCount = 5;
+    required int32 eventSystemUnreadCount = 6;
+}
+
+message ListRoomsReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 4;
+
+    repeated RoomDetail detail = 1;
+}
+
+enum RoomEventType {
+    roomEventTypeAll = 0;
+    roomEventTypeMessage = 1;
+    roomEventTypeSystem = 2;
+}
+
+enum SinceTimeOrderType {
+    sinceTimeOrderTypeNewest = 0;
+    sinceTimeOrderTypeOldest = 1;
+}
+
+message SinceTimeFilter {
+    required int64 sinceTimestamp = 1;
+    required SinceTimeOrderType orderType = 2;
+}
+
+message SyncRoomFilter {
+    required string roomId = 1;
+    // Mean we want to filter room events with offset of time and order direction
+    optional SinceTimeFilter sinceFilter = 2;
+    // Mean we want to filter room events by type
+    required RoomEventType eventFilter = 4;
+    // Mean we want to get limited room events with conjunction of sinceFilter and eventFilter
+    required int32 eventLimit = 3;
+}
+
+message SyncRooms {
+    option (net.orionlab.sputniknchatmessage.msgid) = 5;
+
+    repeated SyncRoomFilter roomFilter = 1;
+}
+
+message ChatAttachmentDetail {
+    required string eventId = 1;
+    required string attachmentId = 2;
+    required string mimeType = 3;
+}
+
+message RoomEventReactionDetail {
+    required string eventId = 1;
+    required string roomId = 2;
+    required string senderId = 3;
+    required string content = 4;
+    required int64 timestamp = 5;
+}
+
+message RoomEventMessageDetail {
+    required string eventId = 1;
+    required string roomId = 2;
+    required string senderId = 3;
+    optional int32 clientEventId = 4;
+    required int32 version = 5;
+    repeated ChatAttachmentDetail attachment = 6;
+    repeated RoomEventReactionDetail reaction = 7;
+    required string content = 8;
+    required int64 createTimestamp = 9;
+    required int64 updateTimestamp = 10;
+}
+
+message RoomEventSystemDetail {
+    required string eventId = 1;
+    required string roomId = 2;
+    required int32 version = 3;
+    required string content = 4;
+    required int64 createTimestamp = 5;
+}
+
+message SyncRoomsReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 6;
+
+    repeated RoomEventMessageDetail messageEvents = 1;
+    repeated RoomEventSystemDetail systemEvents = 2;
+}
+
+message RoomEventMessage {
+    option (net.orionlab.sputniknchatmessage.msgid) = 7;
+
+    required string roomId = 1;
+    required int32 clientEventId = 2;
+    repeated string attachment = 3;
+    required string content = 4;
+    required int32 version = 5;
+}
+
+message RoomEventMessageReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 8;
+
+    required RoomEventMessageDetail detail = 1;
+}
+
+message RoomEventReaction {
+    option (net.orionlab.sputniknchatmessage.msgid) = 9;
+
+    required string roomId = 1;
+    required string messageId = 2;
+    required int32 clientEventId = 3;
+    required string content = 4;
+}
+
+message RoomEventReactionReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 10;
+
+    required RoomEventReactionDetail detail = 1;
+}
+
+message RoomEventSystemReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 11;
+
+    required RoomEventSystemDetail detail = 1;
+}
+
+message ListUsers {
+    option (net.orionlab.sputniknchatmessage.msgid) = 12;
+}
+
+message ListUsersReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 13;
+
+    repeated UserDetail users = 1;
+}
+
+// Will produce RoomStateChangedReply
+message SetRoomReadMarker {
+    option (net.orionlab.sputniknchatmessage.msgid) = 14;
+
+    required string roomId = 1;
+    required int64 readMarkerTimestamp = 2;
+}
+
+message CreateRoom {
+    option (net.orionlab.sputniknchatmessage.msgid) = 15;
+
+    required string title = 1;
+    optional string avatar = 2;
+    repeated string memberIds = 3;
+}
+
+message CreateRoomReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 16;
+
+    required RoomDetail detail = 1;
+}
+
+// Will produce RoomStateChangedReply
+message InviteRoomMember {
+    option (net.orionlab.sputniknchatmessage.msgid) = 17;
+
+    required string roomId = 1;
+    repeated string memberIds = 2;
+}
+
+// Will produce RoomStateChangedReply
+message RemoveRoomMember {
+    option (net.orionlab.sputniknchatmessage.msgid) = 18;
+
+    required string roomId = 1;
+    repeated string memberIds = 2;
+}
+
+message RoomStateChangedReply {
+    option (net.orionlab.sputniknchatmessage.msgid) = 19;
+
+    required RoomDetail detail = 1;
+}

@@ -1,0 +1,196 @@
+buildscript {
+    ext.kotlin_version = "1.5.30"
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+apply plugin: "kotlin"
+
+group "net.orionlab.protocodegen"
+version "1.0"
+
+import org.apache.tools.ant.taskdefs.condition.Os
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+compileJava.options.encoding = "UTF-8"
+
+repositories {
+    mavenCentral()
+}
+
+def versions = [
+        ProtobufVersion: "3.17.3"
+]
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    implementation "com.google.protobuf:protobuf-java:${versions.ProtobufVersion}"
+}
+
+sourceSets {
+    main.java.srcDirs = ["src/main/java"]
+}
+
+task copyToLib(type: Copy) {
+    String outPath = "$buildDir/libs/lib"
+    if (!new File(outPath).exists()) {
+        new File(outPath).mkdirs()
+    }
+    into outPath
+    from configurations.findByName('runtimeClasspath').getFiles()
+}
+
+jar {
+    manifest {
+        attributes "Implementation-Title": project.name
+        attributes "Implementation-Version": project.version
+        attributes "Main-Class": "net.orionlab.ProtobufCodeGenKt"
+        attributes "Class-Path": configurations.findByName('runtimeClasspath').getFiles().collect { "lib/$it.name" }.join(" ")
+    }
+    finalizedBy copyToLib
+}
+
+ext {
+    protoSrcDir = "${projectDir.absolutePath}/src/main/proto".toString()
+    baseGenOutDir = "${projectDir.absolutePath}/src/generated".toString()
+    javaGenOutDir = "$baseGenOutDir/java".toString()
+    dartGenOutDir = "$baseGenOutDir/dart".toString()
+    chatClientGenOutDir = "../sputnikn-chat-client/lib/generated"
+    chatServerGenOutDir = "../sputnikn-chat-server/src/generated/java"
+}
+
+def cleanOutDirs = { ->
+    def genOutDirs = [baseGenOutDir,
+                      javaGenOutDir,
+                      dartGenOutDir,
+                      chatClientGenOutDir,
+                      "${chatServerGenOutDir}/net/orionlab/chatmessage"]
+    genOutDirs.each { dir ->
+        println "Cleaning $dir"
+        if (new File(dir).exists()) {
+            delete dir
+        }
+        println "Creating $dir"
+        new File(dir).mkdirs()
+    }
+}
+
+def copyGeneratedToChatClient = { ->
+    println "Copy generated to ChatClient"
+    new File("${chatClientGenOutDir}").mkdirs()
+    copy {
+        from("src/generated/dart") {
+            include '*.pb.dart'
+            include '*.pbenum.dart'
+            include 'serializer.dart'
+        }
+        into "${chatClientGenOutDir}"
+    }
+}
+
+def copyGeneratedToChatServer = { ->
+    println "Copy generated to ChatServer"
+    new File("${chatServerGenOutDir}").mkdirs()
+    copy {
+        from "src/generated/java"
+        into "${chatServerGenOutDir}"
+    }
+}
+
+def copyGenerated = {
+    println "Copy generated"
+    copyGeneratedToChatClient()
+    copyGeneratedToChatServer()
+}
+
+def genProtoJava = { ->
+    description = "Task that generates Java source files for Client and Server applications."
+    ext {
+        protocPath = ""
+        protocGenRpc = ""
+        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+            protocPath = "protoc.exe"
+            protocGenRpc = "${projectDir.absolutePath}/kotlincodegen.cmd".toString()
+        } else {
+            protocPath = "protoc"
+            protocGenRpc = "${projectDir.absolutePath}/kotlincodegen.sh".toString()
+        }
+    }
+
+    List<String> execArgs = new ArrayList<>()
+    execArgs.add("${protocPath}")
+    execArgs.add("--rpc_out=$javaGenOutDir")
+    execArgs.add("--plugin=protoc-gen-rpc=${protocGenRpc}")
+    execArgs.add("--java_out=$javaGenOutDir")
+    execArgs.add("--proto_path=$protoSrcDir")
+
+    FileTree protoFiles = fileTree(dir: protoSrcDir, include: "*.proto")
+    protoFiles.visit { FileVisitDetails detail ->
+        execArgs.add(detail.file.absolutePath)
+    }
+
+    println "Execute Kotlin generation"
+    exec {
+        standardOutput = new ByteArrayOutputStream()
+        commandLine execArgs.toArray()
+    }
+}
+
+// Setup: https://pub.dev/packages/protoc_plugin
+// Install Proto Dart Plugin: dart pub global activate protoc_plugin
+def genProtoDart = { ->
+    description = "Task that generates Dart source files for Client applications."
+    ext {
+        protocPath = ""
+        protocGenRpc = ""
+        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+            protocPath = "protoc.exe"
+            protocGenRpc = "${projectDir.absolutePath}/dartcodegen.cmd"
+        } else {
+            protocPath = "protoc"
+            protocGenRpc = "${projectDir.absolutePath}/dartcodegen.sh"
+        }
+    }
+
+    List<String> execArgs = new ArrayList<>()
+    execArgs.add("$protocPath")
+    execArgs.add("--rpc_out=$dartGenOutDir")
+    execArgs.add("--plugin=protoc-gen-rpc=$protocGenRpc")
+    execArgs.add("--dart_out=$dartGenOutDir")
+    execArgs.add("--proto_path=$protoSrcDir")
+
+    FileTree protoFiles = fileTree(dir: protoSrcDir, include: "chat_message.proto")
+    protoFiles.visit { FileVisitDetails detail ->
+        execArgs.add(detail.file.absolutePath)
+    }
+
+    println "Execute Dart generation"
+    exec {
+        standardOutput = new ByteArrayOutputStream()
+        commandLine execArgs.toArray()
+    }
+}
+
+task genProto(type: Exec) {
+    doFirst {
+        cleanOutDirs()
+        genProtoJava()
+        genProtoDart()
+    }
+    doLast {
+        copyGenerated()
+    }
+    ext{cmdLine = ""}
+    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+        cmdLine = "cmd.exe"
+    } else {
+        cmdLine = "sh"
+    }
+    commandLine "${cmdLine}"
+}
